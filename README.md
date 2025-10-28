@@ -1,5 +1,9 @@
 
-  # MaspalaDev / ChangeDev FNB Hackathon 2025 South African Municipal Portal project.
+  # MaspalaDev / ChangeDev
+
+👉 www.appoftheyear.co.za/hackathon
+
+#FNBAOTYHackathon #FNBAppOfTheYear #AfricasBiggestHackathon 2025 South African Municipal Portal project.
 
 Problem Breakdown
 1. Billing Issues
