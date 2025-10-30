@@ -61,30 +61,70 @@ async function verifyUser(request: Request) {
 
 // ============= AUTH ROUTES =============
 
+// (snippet to replace/adjust the signup and create-admin sections)
+
+// --- Public signup (keep strictly citizen) ---
 app.post('/make-server-4c8674b4/signup', async (c) => {
   try {
     const { email, password, name, role } = await c.req.json()
-    
-    // Only allow 'citizen' role via public signup
-    const userRole = "citizen"//
-    
+
+    // Public signup must always create citizen accounts
+    const userRole = 'citizen'
+
     const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
-      user_metadata: { 
+      user_metadata: {
         name,
         role: userRole,
         municipality: 'Default Municipality'
       },
-      email_confirm: true // Automatically confirm since email server hasn't been configured
+      email_confirm: true
     })
-    
+
+    // ...rest unchanged: write KV profile, audit log, respond
+  } catch (error) {
+    // ...
+  }
+})
+
+// --- Admin-only user creation ---
+app.post('/make-server-4c8674b4/create-admin', async (c) => {
+  try {
+    const { email, password, name, role } = await c.req.json()
+
+    // Verify requesting user is admin
+    const { user: requestingUser, error: authError } = await verifyUser(c.req.raw)
+    if (authError) {
+      return c.json({ error: authError }, 401)
+    }
+
+    const requestingUserData = await kv.get(`user_${requestingUser.id}`)
+    if (requestingUserData?.role !== 'admin') {
+      return c.json({ error: 'Only admins can create admin users' }, 403)
+    }
+
+    // Add any new roles you want supported here (e.g., 'mayor')
+    const validRoles = ['admin', 'billing_officer', 'auditor', 'supervisor', 'mayor']
+    const userRole = validRoles.includes(role) ? role : 'billing_officer'
+
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      user_metadata: {
+        name,
+        role: userRole,
+        municipality: 'Default Municipality'
+      },
+      email_confirm: true
+    })
+
     if (error) {
-      console.log(`Signup error: ${error.message}`)
+      console.log(`Admin creation error: ${error.message}`)
       return c.json({ error: error.message }, 400)
     }
-    
-    // Create user profile in KV store
+
+    // Ensure KV profile is created/updated with the role
     await kv.set(`user_${data.user.id}`, {
       id: data.user.id,
       email,
@@ -93,13 +133,13 @@ app.post('/make-server-4c8674b4/signup', async (c) => {
       municipality: 'Default Municipality',
       createdAt: new Date().toISOString()
     })
-    
-    await createAuditLog('system', 'user_created', 'user', data.user.id, { email, name, role: userRole })
-    
+
+    await createAuditLog(requestingUser.id, 'admin_user_created', 'user', data.user.id, { email, name, role: userRole })
+
     return c.json({ success: true, user: data.user })
   } catch (error) {
-    console.log(`Signup error: ${error}`)
-    return c.json({ error: 'Signup failed' }, 500)
+    console.log(`Admin creation error: ${error}`)
+    return c.json({ error: 'Admin creation failed' }, 500)
   }
 })
 
