@@ -66,7 +66,7 @@ app.post('/make-server-4c8674b4/signup', async (c) => {
     const { email, password, name, role } = await c.req.json()
     
     // Only allow 'citizen' role via public signup
-    const userRole = role === 'admin' || role === 'billing_officer' || role === 'auditor' ? 'citizen' : 'citizen'
+    const userRole = "citizen"//
     
     const { data, error } = await supabase.auth.admin.createUser({
       email,
@@ -163,7 +163,7 @@ app.get('/make-server-4c8674b4/user-profile', async (c) => {
     }
     
     const profile = await kv.get(`user_${user.id}`)
-    return c.json({ profile: profile || { id: user.id, email: user.email, role: 'citizen', ...user.user_metadata } })
+    return c.json({ profile: profile || { id: user.id, email: user.email, role: user.user_metadata?.role ||'citizen', ...user.user_metadata } })
   } catch (error) {
     console.log(`User profile fetch error: ${error}`)
     return c.json({ error: 'Failed to fetch profile' }, 500)
