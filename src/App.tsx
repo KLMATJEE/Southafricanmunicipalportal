@@ -3,19 +3,41 @@ import { AuthPage } from './components/AuthPage'
 import { CitizenDashboard } from './components/CitizenDashboard'
 import { AdminPanel } from './components/AdminPanel'
 import { TransparencyPortal } from './components/TransparencyPortal'
+import { UnifiedServicePortal } from './components/UnifiedServicePortal'
+import { EParticipationTools } from './components/EParticipationTools'
+import { ProcurementTransparency } from './components/ProcurementTransparency'
+import { GovernmentHeader } from './components/GovernmentHeader'
+import { LanguageSelector } from './components/LanguageSelector'
+import { OfflineSyncIndicator } from './components/OfflineSyncIndicator'
+import { FeatureTour, useFeatureTour } from './components/FeatureTour'
 import { Button } from './components/ui/button'
 import { api } from './utils/api'
 import { createClient } from './utils/supabase/client'
-import { Building2, LogOut, BarChart3, Home, Settings } from 'lucide-react'
+import { Language, getTranslation } from './utils/translations'
+import { CacheManager } from './utils/offlineSync'
+import { Building2, LogOut, BarChart3, Home, Settings, Grid3X3, Users, Package, HelpCircle } from 'lucide-react'
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState<any>(null)
-  const [currentView, setCurrentView] = useState<'dashboard' | 'admin' | 'transparency'>('dashboard')
+  const [currentView, setCurrentView] = useState<'unified' | 'dashboard' | 'admin' | 'transparency' | 'participation' | 'procurement'>('unified')
   const [isLoading, setIsLoading] = useState(true)
+  const [language, setLanguage] = useState<Language>('en')
+  const [bills, setBills] = useState<any[]>([])
+  const [issues, setIssues] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<any[]>([])
+  const { showTour, checkAndShowTour, resetTour, closeTour } = useFeatureTour()
   
   useEffect(() => {
     checkAuth()
+    // Initialize offline cache
+    CacheManager.cacheResources()
+    
+    // Load saved language preference
+    const savedLanguage = localStorage.getItem('preferred_language') as Language
+    if (savedLanguage) {
+      setLanguage(savedLanguage)
+    }
   }, [])
   
   const checkAuth = async () => {
@@ -40,6 +62,33 @@ export default function App() {
     setIsAuthenticated(true)
     const profile = await api.getUserProfile()
     setUser(profile.profile)
+    loadUserData()
+    // Show feature tour for new users after a short delay
+    setTimeout(checkAndShowTour, 1000)
+  }
+  
+  const loadUserData = async () => {
+    try {
+      const [billsData, issuesData, notificationsData] = await Promise.all([
+        api.getBills().catch(() => ({ bills: [] })),
+        api.getIssues().catch(() => ({ issues: [] })),
+        api.getNotifications().catch(() => ({ notifications: [] })),
+      ])
+      setBills(billsData.bills || [])
+      setIssues(issuesData.issues || [])
+      setNotifications(notificationsData.notifications || [])
+    } catch (error) {
+      console.error('Error loading user data:', error)
+    }
+  }
+  
+  const handleLanguageChange = (lang: Language) => {
+    setLanguage(lang)
+    localStorage.setItem('preferred_language', lang)
+  }
+  
+  const handleNavigate = (section: string) => {
+    setCurrentView(section as any)
   }
   
   const handleSignOut = async () => {
@@ -48,13 +97,27 @@ export default function App() {
     localStorage.removeItem('access_token')
     setIsAuthenticated(false)
     setUser(null)
-    setCurrentView('dashboard')
+    setBills([])
+    setIssues([])
+    setNotifications([])
+    setCurrentView('unified')
   }
+  
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadUserData()
+      // Reload data every 30 seconds
+      const interval = setInterval(loadUserData, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [isAuthenticated])
+  
+  const t = (key: string) => getTranslation(language, key)
   
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">{t('loading')}</div>
       </div>
     )
   }
@@ -67,12 +130,15 @@ export default function App() {
   
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Government Header */}
+      <GovernmentHeader />
+      
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-sa-green rounded-lg flex items-center justify-center">
                 <Building2 className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -81,14 +147,18 @@ export default function App() {
               </div>
             </div>
             
-            <div className="flex items-center gap-4">
-              <div className="text-right mr-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={resetTour} title="Show feature tour">
+                <HelpCircle className="w-4 h-4" />
+              </Button>
+              <LanguageSelector currentLanguage={language} onLanguageChange={handleLanguageChange} />
+              <div className="text-right mr-4 hidden sm:block">
                 <p className="text-sm">{user?.name}</p>
                 <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
               </div>
               <Button variant="outline" onClick={handleSignOut}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Sign Out
+                <LogOut className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">{t('signOut')}</span>
               </Button>
             </div>
           </div>
@@ -98,43 +168,79 @@ export default function App() {
       {/* Navigation Tabs */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex gap-1">
+          <nav className="flex gap-1 overflow-x-auto">
+            <button
+              onClick={() => setCurrentView('unified')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                currentView === 'unified'
+                  ? 'border-sa-green text-sa-green'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+              }`}
+            >
+              <Grid3X3 className="w-4 h-4 inline mr-2" />
+              {t('services')}
+            </button>
+            
             <button
               onClick={() => setCurrentView('dashboard')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 currentView === 'dashboard'
-                  ? 'border-blue-600 text-blue-600'
+                  ? 'border-sa-green text-sa-green'
                   : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
               }`}
             >
               <Home className="w-4 h-4 inline mr-2" />
-              {isAdmin ? 'Overview' : 'My Dashboard'}
+              {t('dashboard')}
+            </button>
+            
+            <button
+              onClick={() => setCurrentView('participation')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                currentView === 'participation'
+                  ? 'border-sa-green text-sa-green'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+              }`}
+            >
+              <Users className="w-4 h-4 inline mr-2" />
+              {t('participation')}
+            </button>
+            
+            <button
+              onClick={() => setCurrentView('procurement')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                currentView === 'procurement'
+                  ? 'border-sa-green text-sa-green'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+              }`}
+            >
+              <Package className="w-4 h-4 inline mr-2" />
+              {t('procurement')}
             </button>
             
             {isAdmin && (
               <button
                 onClick={() => setCurrentView('admin')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   currentView === 'admin'
-                    ? 'border-blue-600 text-blue-600'
+                    ? 'border-sa-green text-sa-green'
                     : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
                 <Settings className="w-4 h-4 inline mr-2" />
-                Admin Panel
+                {t('admin')}
               </button>
             )}
             
             <button
               onClick={() => setCurrentView('transparency')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 currentView === 'transparency'
-                  ? 'border-blue-600 text-blue-600'
+                  ? 'border-sa-green text-sa-green'
                   : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
               }`}
             >
               <BarChart3 className="w-4 h-4 inline mr-2" />
-              Transparency
+              {t('transparency')}
             </button>
           </nav>
         </div>
@@ -142,8 +248,27 @@ export default function App() {
       
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {currentView === 'unified' && (
+          <UnifiedServicePortal
+            user={user}
+            bills={bills}
+            issues={issues}
+            notifications={notifications}
+            language={language}
+            onNavigate={handleNavigate}
+          />
+        )}
+        
         {currentView === 'dashboard' && (
           isAdmin ? <AdminPanel user={user} /> : <CitizenDashboard user={user} />
+        )}
+        
+        {currentView === 'participation' && (
+          <EParticipationTools user={user} language={language} />
+        )}
+        
+        {currentView === 'procurement' && (
+          <ProcurementTransparency language={language} />
         )}
         
         {currentView === 'admin' && isAdmin && (
@@ -154,6 +279,12 @@ export default function App() {
           <TransparencyPortal />
         )}
       </main>
+      
+      {/* Offline Sync Indicator */}
+      <OfflineSyncIndicator />
+      
+      {/* Feature Tour */}
+      {showTour && <FeatureTour onClose={closeTour} />}
       
       {/* Footer */}
       <footer className="bg-white border-t mt-12">

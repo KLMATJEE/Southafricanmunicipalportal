@@ -581,4 +581,369 @@ app.post('/make-server-4c8674b4/notifications/:id/read', async (c) => {
   }
 })
 
+// ============= E-PARTICIPATION ROUTES =============
+
+// Forums/Discussions
+app.get('/make-server-4c8674b4/forums', async (c) => {
+  try {
+    const forums = await kv.getByPrefix('forum_')
+    const sortedForums = (forums || []).sort((a: any, b: any) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    return c.json({ forums: sortedForums })
+  } catch (error) {
+    console.log(`Forums fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch forums' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/forums', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const { title, content, category } = await c.req.json()
+    const forumId = `forum_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    const userData = await kv.get(`user_${user.id}`)
+    
+    const forum = {
+      id: forumId,
+      authorId: user.id,
+      authorName: userData?.name || 'Anonymous',
+      title,
+      content,
+      category,
+      likes: 0,
+      comments: 0,
+      createdAt: new Date().toISOString(),
+    }
+    
+    await kv.set(forumId, forum)
+    await createAuditLog(user.id, 'forum_created', 'forum', forumId, forum)
+    
+    return c.json({ success: true, forum })
+  } catch (error) {
+    console.log(`Forum creation error: ${error}`)
+    return c.json({ error: 'Failed to create discussion' }, 500)
+  }
+})
+
+// Polls
+app.get('/make-server-4c8674b4/polls', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const polls = await kv.getByPrefix('poll_')
+    
+    // Check if user voted on each poll
+    const pollsWithUserVote = await Promise.all(
+      (polls || []).map(async (poll: any) => {
+        const userVote = await kv.get(`poll_vote_${poll.id}_${user.id}`)
+        return {
+          ...poll,
+          userVoted: !!userVote,
+          active: new Date(poll.endsAt) > new Date(),
+        }
+      })
+    )
+    
+    return c.json({ polls: pollsWithUserVote })
+  } catch (error) {
+    console.log(`Polls fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch polls' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/polls', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const userData = await kv.get(`user_${user.id}`)
+    if (!['admin', 'supervisor'].includes(userData?.role)) {
+      return c.json({ error: 'Only admins can create polls' }, 403)
+    }
+    
+    const { question, options, endsAt } = await c.req.json()
+    const pollId = `poll_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    const poll = {
+      id: pollId,
+      question,
+      options: options.map((text: string) => ({ text, votes: 0 })),
+      totalVotes: 0,
+      endsAt,
+      createdAt: new Date().toISOString(),
+      createdBy: user.id,
+    }
+    
+    await kv.set(pollId, poll)
+    await createAuditLog(user.id, 'poll_created', 'poll', pollId, poll)
+    
+    return c.json({ success: true, poll })
+  } catch (error) {
+    console.log(`Poll creation error: ${error}`)
+    return c.json({ error: 'Failed to create poll' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/polls/:id/vote', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const pollId = c.req.param('id')
+    const { optionIndex } = await c.req.json()
+    
+    // Check if user already voted
+    const existingVote = await kv.get(`poll_vote_${pollId}_${user.id}`)
+    if (existingVote) {
+      return c.json({ error: 'You have already voted on this poll' }, 400)
+    }
+    
+    const poll = await kv.get(pollId)
+    if (!poll) {
+      return c.json({ error: 'Poll not found' }, 404)
+    }
+    
+    if (new Date(poll.endsAt) < new Date()) {
+      return c.json({ error: 'Poll has ended' }, 400)
+    }
+    
+    // Record vote
+    poll.options[optionIndex].votes += 1
+    poll.totalVotes += 1
+    await kv.set(pollId, poll)
+    
+    // Mark that user voted
+    await kv.set(`poll_vote_${pollId}_${user.id}`, {
+      pollId,
+      userId: user.id,
+      optionIndex,
+      timestamp: new Date().toISOString(),
+    })
+    
+    await createAuditLog(user.id, 'poll_voted', 'poll', pollId, { optionIndex })
+    
+    return c.json({ success: true, poll })
+  } catch (error) {
+    console.log(`Poll vote error: ${error}`)
+    return c.json({ error: 'Failed to record vote' }, 500)
+  }
+})
+
+// Feedback
+app.get('/make-server-4c8674b4/feedback', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const userData = await kv.get(`user_${user.id}`)
+    
+    if (['admin', 'supervisor'].includes(userData?.role)) {
+      // Admins see all feedback
+      const allFeedback = await kv.getByPrefix('feedback_')
+      return c.json({ feedback: allFeedback || [] })
+    } else {
+      // Citizens see only their feedback
+      const feedback = await kv.getByPrefix(`feedback_${user.id}_`)
+      return c.json({ feedback: feedback || [] })
+    }
+  } catch (error) {
+    console.log(`Feedback fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch feedback' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/feedback', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const { category, subject, message, rating } = await c.req.json()
+    const feedbackId = `feedback_${user.id}_${Date.now()}`
+    
+    const feedback = {
+      id: feedbackId,
+      userId: user.id,
+      category,
+      subject,
+      message,
+      rating,
+      response: null,
+      createdAt: new Date().toISOString(),
+    }
+    
+    await kv.set(feedbackId, feedback)
+    await createAuditLog(user.id, 'feedback_submitted', 'feedback', feedbackId, feedback)
+    
+    return c.json({ success: true, feedback })
+  } catch (error) {
+    console.log(`Feedback submission error: ${error}`)
+    return c.json({ error: 'Failed to submit feedback' }, 500)
+  }
+})
+
+// ============= PROCUREMENT ROUTES =============
+
+// Tenders
+app.get('/make-server-4c8674b4/tenders', async (c) => {
+  try {
+    const tenders = await kv.getByPrefix('tender_')
+    const sortedTenders = (tenders || []).sort((a: any, b: any) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    return c.json({ tenders: sortedTenders })
+  } catch (error) {
+    console.log(`Tenders fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch tenders' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/tenders', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const userData = await kv.get(`user_${user.id}`)
+    if (!['admin', 'supervisor'].includes(userData?.role)) {
+      return c.json({ error: 'Only admins can create tenders' }, 403)
+    }
+    
+    const { title, description, category, number, estimatedValue, deadline } = await c.req.json()
+    const tenderId = `tender_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    const tender = {
+      id: tenderId,
+      number,
+      title,
+      description,
+      category,
+      estimatedValue,
+      deadline,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      createdBy: user.id,
+    }
+    
+    await kv.set(tenderId, tender)
+    await createAuditLog(user.id, 'tender_created', 'tender', tenderId, tender)
+    
+    return c.json({ success: true, tender })
+  } catch (error) {
+    console.log(`Tender creation error: ${error}`)
+    return c.json({ error: 'Failed to create tender' }, 500)
+  }
+})
+
+// Suppliers
+app.get('/make-server-4c8674b4/suppliers', async (c) => {
+  try {
+    const suppliers = await kv.getByPrefix('supplier_')
+    return c.json({ suppliers: suppliers || [] })
+  } catch (error) {
+    console.log(`Suppliers fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch suppliers' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/suppliers', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const userData = await kv.get(`user_${user.id}`)
+    if (!['admin', 'supervisor'].includes(userData?.role)) {
+      return c.json({ error: 'Only admins can register suppliers' }, 403)
+    }
+    
+    const data = await c.req.json()
+    const supplierId = `supplier_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    const supplier = {
+      id: supplierId,
+      ...data,
+      status: 'active',
+      rating: data.rating || 0,
+      completedProjects: data.completedProjects || 0,
+      createdAt: new Date().toISOString(),
+      createdBy: user.id,
+    }
+    
+    await kv.set(supplierId, supplier)
+    await createAuditLog(user.id, 'supplier_registered', 'supplier', supplierId, supplier)
+    
+    return c.json({ success: true, supplier })
+  } catch (error) {
+    console.log(`Supplier registration error: ${error}`)
+    return c.json({ error: 'Failed to register supplier' }, 500)
+  }
+})
+
+// Contracts
+app.get('/make-server-4c8674b4/contracts', async (c) => {
+  try {
+    const contracts = await kv.getByPrefix('contract_')
+    const sortedContracts = (contracts || []).sort((a: any, b: any) => 
+      new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+    )
+    return c.json({ contracts: sortedContracts })
+  } catch (error) {
+    console.log(`Contracts fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch contracts' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/contracts', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+    
+    const userData = await kv.get(`user_${user.id}`)
+    if (!['admin', 'supervisor'].includes(userData?.role)) {
+      return c.json({ error: 'Only admins can create contracts' }, 403)
+    }
+    
+    const data = await c.req.json()
+    const contractId = `contract_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    const contract = {
+      id: contractId,
+      ...data,
+      paidAmount: data.paidAmount || 0,
+      milestones: data.milestones || [],
+      createdAt: new Date().toISOString(),
+      createdBy: user.id,
+    }
+    
+    await kv.set(contractId, contract)
+    await createAuditLog(user.id, 'contract_created', 'contract', contractId, contract)
+    
+    return c.json({ success: true, contract })
+  } catch (error) {
+    console.log(`Contract creation error: ${error}`)
+    return c.json({ error: 'Failed to create contract' }, 500)
+  }
+})
+
 Deno.serve(app.fetch)

@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Badge } from './ui/badge'
 import { api } from '../utils/api'
 import { Plus, Camera, MapPin, AlertCircle, CheckCircle2, Clock, Image as ImageIcon } from 'lucide-react'
+import { MapPicker } from './MapPicker'
+import { GovernmentBadge } from './GovernmentBadge'
 
 interface IssueReportingProps {
   issues: any[]
@@ -26,8 +28,11 @@ export function IssueReporting({ issues, onIssueCreated }: IssueReportingProps) 
     description: '',
     category: 'water',
     location: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
     photoData: null as string | null,
   })
+  const [showMap, setShowMap] = useState(false)
   
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -54,9 +59,12 @@ export function IssueReporting({ issues, onIssueCreated }: IssueReportingProps) 
         description: '',
         category: 'water',
         location: '',
+        latitude: null,
+        longitude: null,
         photoData: null,
       })
       setPhotoPreview(null)
+      setShowMap(false)
       onIssueCreated()
     } catch (error) {
       console.error('Issue creation error:', error)
@@ -97,8 +105,11 @@ export function IssueReporting({ issues, onIssueCreated }: IssueReportingProps) 
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Service Requests</CardTitle>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <CardTitle>Service Requests</CardTitle>
+                <GovernmentBadge label="Official" variant="official" />
+              </div>
               <CardDescription>Report issues and track their resolution</CardDescription>
             </div>
             <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
@@ -162,18 +173,51 @@ export function IssueReporting({ issues, onIssueCreated }: IssueReportingProps) 
                   
                   <div className="space-y-2">
                     <Label htmlFor="location">Location</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="location"
-                        value={formData.location}
-                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                        placeholder="Address or location details"
-                        required
-                      />
-                      <Button type="button" variant="outline" size="icon">
-                        <MapPin className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    {!showMap ? (
+                      <div className="flex gap-2">
+                        <Input
+                          id="location"
+                          value={formData.location}
+                          onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                          placeholder="Address or location details"
+                          required={!formData.latitude}
+                        />
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="icon"
+                          onClick={() => setShowMap(true)}
+                        >
+                          <MapPin className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <MapPicker
+                          onLocationSelect={(loc) => {
+                            setFormData({
+                              ...formData,
+                              location: loc.address,
+                              latitude: loc.lat,
+                              longitude: loc.lng,
+                            })
+                          }}
+                          initialLocation={
+                            formData.latitude && formData.longitude
+                              ? { lat: formData.latitude, lng: formData.longitude }
+                              : undefined
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowMap(false)}
+                          className="w-full"
+                        >
+                          Enter Address Manually
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   
                   <div className="space-y-2">
@@ -237,6 +281,19 @@ export function IssueReporting({ issues, onIssueCreated }: IssueReportingProps) 
                           <MapPin className="w-3 h-3" />
                           {issue.location}
                         </span>
+                        {issue.latitude && issue.longitude && (
+                          <>
+                            <span>•</span>
+                            <a
+                              href={`https://www.google.com/maps?q=${issue.latitude},${issue.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sa-green hover:underline flex items-center gap-1"
+                            >
+                              View on Map
+                            </a>
+                          </>
+                        )}
                         <span>•</span>
                         <span>{new Date(issue.createdAt).toLocaleDateString()}</span>
                         <span>•</span>

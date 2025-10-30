@@ -10,6 +10,8 @@ import { Badge } from './ui/badge'
 import { api } from '../utils/api'
 import { Users, FileText, Shield, Plus, CheckCircle2, Clock, DollarSign } from 'lucide-react'
 import { AuditLogViewer } from './AuditLogViewer'
+import { SABadge, SAPOPIACompliance, SAUserRoleBadge } from './GovernmentKit'
+import { SampleDataInitializer } from './SampleDataInitializer'
 
 interface AdminPanelProps {
   user: any
@@ -154,6 +156,11 @@ export function AdminPanel({ user }: AdminPanelProps) {
           </Card>
         )}
       </div>
+      
+      {/* Sample Data Initializer */}
+      {user.role === 'admin' && (
+        <SampleDataInitializer />
+      )}
       
       {/* Admin Tabs */}
       <Tabs defaultValue="issues" className="space-y-4">

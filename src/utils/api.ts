@@ -54,4 +54,21 @@ export const api = {
   
   // Transaction Fees
   getTransactionFees: () => apiRequest('/transaction-fees'),
+  
+  // E-Participation
+  getForums: () => apiRequest('/forums'),
+  createDiscussion: (data: any) => apiRequest('/forums', { method: 'POST', body: JSON.stringify(data) }),
+  getPolls: () => apiRequest('/polls'),
+  createPoll: (data: any) => apiRequest('/polls', { method: 'POST', body: JSON.stringify(data) }),
+  votePoll: (pollId: string, optionIndex: number) => apiRequest(`/polls/${pollId}/vote`, { method: 'POST', body: JSON.stringify({ optionIndex }) }),
+  getFeedback: () => apiRequest('/feedback'),
+  submitFeedback: (data: any) => apiRequest('/feedback', { method: 'POST', body: JSON.stringify(data) }),
+  
+  // Procurement
+  getTenders: () => apiRequest('/tenders'),
+  createTender: (data: any) => apiRequest('/tenders', { method: 'POST', body: JSON.stringify(data) }),
+  getSuppliers: () => apiRequest('/suppliers'),
+  registerSupplier: (data: any) => apiRequest('/suppliers', { method: 'POST', body: JSON.stringify(data) }),
+  getContracts: () => apiRequest('/contracts'),
+  createContract: (data: any) => apiRequest('/contracts', { method: 'POST', body: JSON.stringify(data) }),
 }

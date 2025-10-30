@@ -39,6 +39,14 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  
+  /* South African Government Colors */
+  --sa-green: #007749;
+  --sa-gold: #FFBC40;
+  --sa-red: #DE3831;
+  --sa-blue: #001489;
+  --sa-black: #000000;
+  --sa-white: #FFFFFF;
 }
 
 .dark {
@@ -117,6 +125,14 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* South African Government Colors */
+  --color-sa-green: var(--sa-green);
+  --color-sa-gold: var(--sa-gold);
+  --color-sa-red: var(--sa-red);
+  --color-sa-blue: var(--sa-blue);
+  --color-sa-black: var(--sa-black);
+  --color-sa-white: var(--sa-white);
 }
 
 @layer base {
