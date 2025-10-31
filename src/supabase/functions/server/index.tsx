@@ -61,12 +61,62 @@ async function verifyUser(request: Request) {
 
 // ============= AUTH ROUTES =============
 
-// (snippet to replace/adjust the signup and create-admin sections)
+// Bootstrap endpoint - creates first admin if none exist
+app.post('/make-server-4c8674b4/bootstrap-admin', async (c) => {
+  try {
+    const { email, password, name } = await c.req.json()
+    
+    // Check if any admin users already exist
+    const allUsers = await kv.getByPrefix('user_')
+    const adminExists = (allUsers || []).some((u: any) => u.role === 'admin')
+    
+    if (adminExists) {
+      return c.json({ error: 'Admin already exists. Use /create-admin endpoint with admin credentials.' }, 403)
+    }
+    
+    // Create the first admin user
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      user_metadata: { 
+        name,
+        role: 'admin',
+        municipality: 'Default Municipality'
+      },
+      email_confirm: true
+    })
+    
+    if (error) {
+      console.log(`Bootstrap admin creation error: ${error.message}`)
+      return c.json({ error: error.message }, 400)
+    }
+    
+    await kv.set(`user_${data.user.id}`, {
+      id: data.user.id,
+      email,
+      name,
+      role: 'admin',
+      municipality: 'Default Municipality',
+      createdAt: new Date().toISOString()
+    })
+    
+    console.log(`Bootstrap: First admin created with email ${email}`)
+    
+    return c.json({ 
+      success: true, 
+      message: 'Bootstrap admin created successfully',
+      user: { id: data.user.id, email, name, role: 'admin' }
+    })
+  } catch (error) {
+    console.log(`Bootstrap admin creation error: ${error}`)
+    return c.json({ error: 'Bootstrap admin creation failed' }, 500)
+  }
+})
 
-// --- Public signup (keep strictly citizen) ---
+// Public signup - creates citizen accounts only
 app.post('/make-server-4c8674b4/signup', async (c) => {
   try {
-    const { email, password, name, role } = await c.req.json()
+    const { email, password, name } = await c.req.json()
 
     // Public signup must always create citizen accounts
     const userRole = 'citizen'
@@ -81,50 +131,12 @@ app.post('/make-server-4c8674b4/signup', async (c) => {
       },
       email_confirm: true
     })
-
-    // ...rest unchanged: write KV profile, audit log, respond
-  } catch (error) {
-    // ...
-  }
-})
-
-// --- Admin-only user creation ---
-app.post('/make-server-4c8674b4/create-admin', async (c) => {
-  try {
-    const { email, password, name, role } = await c.req.json()
-
-    // Verify requesting user is admin
-    const { user: requestingUser, error: authError } = await verifyUser(c.req.raw)
-    if (authError) {
-      return c.json({ error: authError }, 401)
-    }
-
-    const requestingUserData = await kv.get(`user_${requestingUser.id}`)
-    if (requestingUserData?.role !== 'admin') {
-      return c.json({ error: 'Only admins can create admin users' }, 403)
-    }
-
-    // Add any new roles you want supported here (e.g., 'mayor')
-    const validRoles = ['admin', 'billing_officer', 'auditor', 'supervisor', 'mayor']
-    const userRole = validRoles.includes(role) ? role : 'billing_officer'
-
-    const { data, error } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      user_metadata: {
-        name,
-        role: userRole,
-        municipality: 'Default Municipality'
-      },
-      email_confirm: true
-    })
-
+    
     if (error) {
-      console.log(`Admin creation error: ${error.message}`)
+      console.log(`Signup error: ${error.message}`)
       return c.json({ error: error.message }, 400)
     }
-
-    // Ensure KV profile is created/updated with the role
+    
     await kv.set(`user_${data.user.id}`, {
       id: data.user.id,
       email,
@@ -133,16 +145,17 @@ app.post('/make-server-4c8674b4/create-admin', async (c) => {
       municipality: 'Default Municipality',
       createdAt: new Date().toISOString()
     })
-
-    await createAuditLog(requestingUser.id, 'admin_user_created', 'user', data.user.id, { email, name, role: userRole })
-
+    
+    console.log(`New citizen signed up: ${email}`)
+    
     return c.json({ success: true, user: data.user })
   } catch (error) {
-    console.log(`Admin creation error: ${error}`)
-    return c.json({ error: 'Admin creation failed' }, 500)
+    console.log(`Signup error: ${error}`)
+    return c.json({ error: 'Signup failed' }, 500)
   }
 })
 
+// Admin-only user creation
 app.post('/make-server-4c8674b4/create-admin', async (c) => {
   try {
     const { email, password, name, role } = await c.req.json()

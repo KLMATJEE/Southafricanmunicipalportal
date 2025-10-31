@@ -207,24 +207,61 @@ export class OfflineSync {
 }
 
 // Cache management for offline access
+// Note: This provides basic caching for offline functionality.
+// For production use, consider implementing a full Service Worker
+// with strategies like cache-first, network-first, etc.
 export class CacheManager {
   private static readonly CACHE_NAME = 'municipal-portal-v1'
   private static readonly CACHE_URLS = [
-    '/',
-    '/styles/globals.css',
-    // Add more URLs to cache as needed
+    // Static resources to cache (currently empty to avoid errors)
+    // Add URLs here as needed, e.g.:
+    // '/manifest.json',
+    // '/favicon.ico',
+    // API responses will be cached dynamically by the OfflineSync system
   ]
 
-  // Cache essential resources
+  // Cache essential resources one by one (more resilient than addAll)
   static async cacheResources(): Promise<void> {
-    if ('caches' in window) {
-      try {
-        const cache = await caches.open(this.CACHE_NAME)
-        await cache.addAll(this.CACHE_URLS)
-        console.log('Resources cached successfully')
-      } catch (error) {
-        console.error('Failed to cache resources:', error)
+    if (!('caches' in window)) {
+      console.log('Cache API not available')
+      return
+    }
+
+    try {
+      const cache = await caches.open(this.CACHE_NAME)
+      
+      // Cache each URL individually to avoid failing on one bad URL
+      let successCount = 0
+      let failureCount = 0
+      
+      for (const url of this.CACHE_URLS) {
+        try {
+          const response = await fetch(url)
+          if (response.ok) {
+            await cache.put(url, response)
+            successCount++
+          } else {
+            console.warn(`Failed to cache ${url}: ${response.status}`)
+            failureCount++
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch ${url} for caching:`, error)
+          failureCount++
+        }
       }
+      
+      if (this.CACHE_URLS.length === 0) {
+        console.log('No static resources configured for caching')
+      } else if (successCount > 0) {
+        console.log(`Cached ${successCount} resources successfully`)
+      }
+      
+      if (failureCount > 0) {
+        console.warn(`Failed to cache ${failureCount} resources`)
+      }
+    } catch (error) {
+      console.error('Failed to initialize cache:', error)
+      // Don't throw - caching is optional
     }
   }
 

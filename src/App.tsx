@@ -30,8 +30,11 @@ export default function App() {
   
   useEffect(() => {
     checkAuth()
-    // Initialize offline cache
-    CacheManager.cacheResources()
+    
+    // Initialize offline cache (non-blocking)
+    CacheManager.cacheResources().catch(err => {
+      console.warn('Cache initialization failed (non-critical):', err)
+    })
     
     // Load saved language preference
     const savedLanguage = localStorage.getItem('preferred_language') as Language

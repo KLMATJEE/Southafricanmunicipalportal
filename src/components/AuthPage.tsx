@@ -204,6 +204,15 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
                     municipal services.
                   </AlertDescription>
                 </Alert>
+                
+                <Alert className="mb-4 border-blue-200 bg-blue-50">
+                  <Shield className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-sm text-blue-900">
+                    <strong>Admin Access:</strong> Public signup creates citizen accounts only. 
+                    Admin accounts must be created via secure bootstrap. 
+                    See <code className="text-xs bg-blue-100 px-1 py-0.5 rounded">/ADMIN_BOOTSTRAP_GUIDE.md</code>
+                  </AlertDescription>
+                </Alert>
 
                 <form
                   onSubmit={handleSignup}

@@ -1,0 +1,25 @@
+{
+  "name": "sa-municipal-portal-admin-bootstrap",
+  "version": "1.0.0",
+  "description": "Admin user bootstrap scripts for SA Municipal Portal",
+  "type": "module",
+  "scripts": {
+    "create-admin": "node create_admin.js",
+    "create-admin:env": "node -r dotenv/config create_admin.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.3.1"
+  },
+  "keywords": [
+    "supabase",
+    "admin",
+    "bootstrap",
+    "municipal",
+    "south-africa"
+  ],
+  "author": "SA Municipal Portal Team",
+  "license": "MIT"
+}

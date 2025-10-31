@@ -1,3 +1,56 @@
+# 🏛️ South African Municipal Portal
+
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/your-repo)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-production--ready-success.svg)](https://github.com/your-repo)
+
+> A comprehensive, multilingual municipal service portal for South African citizens with offline capabilities, e-participation tools, and procurement transparency.
+
+## 🚀 Quick Start
+
+### For Citizens
+1. Visit the portal
+2. Click "Sign Up" to create your account
+3. Access bills, report issues, participate in community discussions
+
+### For Administrators
+
+#### First-Time Setup: Create Bootstrap Admin
+
+⚠️ **Important**: Admin accounts cannot be created via public signup.
+
+**Option 1: Web Interface (Recommended)**
+1. Open `/bootstrap-admin.html` in your browser
+2. Enter your Supabase Project ID and Anon Key
+3. Fill in admin details and click "Create Admin User"
+
+**Option 2: Command Line**
+```bash
+cd scripts
+node bootstrap-admin.js
+# Follow the interactive prompts
+```
+
+**Option 3: API Call**
+```bash
+curl -X POST \
+  https://YOUR_PROJECT_ID.supabase.co/functions/v1/make-server-4c8674b4/bootstrap-admin \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -d '{"email":"admin@example.com","password":"secure123","name":"Admin Name"}'
+```
+
+📖 **Documentation:**
+- Quick Start: [BOOTSTRAP_QUICK_START.md](BOOTSTRAP_QUICK_START.md)
+- Full Guide: [BOOTSTRAP_GUIDE.md](BOOTSTRAP_GUIDE.md)
+- Scripts: [scripts/README.md](scripts/README.md)
+
+### Recent Updates (v2.0.1)
+✅ **Fixed:** Cache initialization errors - offline sync now works smoothly  
+📖 See [OFFLINE_FUNCTIONALITY_GUIDE.md](OFFLINE_FUNCTIONALITY_GUIDE.md) for offline features
+
+---
+
 # South African Municipal Portal
 
 A comprehensive, secure municipal services portal built for South African government use, featuring real-time billing, issue reporting with geolocation, role-based access control, and full POPIA compliance.
