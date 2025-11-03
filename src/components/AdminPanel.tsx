@@ -12,6 +12,7 @@ import { Users, FileText, Shield, Plus, CheckCircle2, Clock, DollarSign } from '
 import { AuditLogViewer } from './AuditLogViewer'
 import { SABadge, SAPOPIACompliance, SAUserRoleBadge } from './GovernmentKit'
 import { SampleDataInitializer } from './SampleDataInitializer'
+import { VerifiedUserOnboarding } from './VerifiedUserOnboarding'
 
 interface AdminPanelProps {
   user: any
@@ -20,6 +21,7 @@ interface AdminPanelProps {
 export function AdminPanel({ user }: AdminPanelProps) {
   const [issues, setIssues] = useState<any[]>([])
   const [showCreateUserDialog, setShowCreateUserDialog] = useState(false)
+  const [showVerifiedOnboarding, setShowVerifiedOnboarding] = useState(false)
   const [showBillDialog, setShowBillDialog] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [transactionFeeSummary, setTransactionFeeSummary] = useState<any>(null)
@@ -385,13 +387,21 @@ export function AdminPanel({ user }: AdminPanelProps) {
                     <CardTitle>User Management</CardTitle>
                     <CardDescription>Create and manage staff accounts</CardDescription>
                   </div>
-                  <Dialog open={showCreateUserDialog} onOpenChange={setShowCreateUserDialog}>
-                    <DialogTrigger asChild>
-                      <Button>
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create User
-                      </Button>
-                    </DialogTrigger>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline"
+                      onClick={() => setShowVerifiedOnboarding(true)}
+                    >
+                      <Shield className="w-4 h-4 mr-2" />
+                      Verified Onboarding
+                    </Button>
+                    <Dialog open={showCreateUserDialog} onOpenChange={setShowCreateUserDialog}>
+                      <DialogTrigger asChild>
+                        <Button>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Quick Create
+                        </Button>
+                      </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Create Staff Account</DialogTitle>
@@ -453,7 +463,8 @@ export function AdminPanel({ user }: AdminPanelProps) {
                     </DialogContent>
                   </Dialog>
                 </div>
-              </CardHeader>
+              </div>
+            </CardHeader>
               <CardContent>
                 <div className="space-y-2 text-sm">
                   <p><strong>Admin:</strong> Full system access</p>
@@ -472,6 +483,16 @@ export function AdminPanel({ user }: AdminPanelProps) {
           </TabsContent>
         )}
       </Tabs>
+      
+      {/* Verified User Onboarding Dialog */}
+      <VerifiedUserOnboarding 
+        open={showVerifiedOnboarding}
+        onOpenChange={setShowVerifiedOnboarding}
+        onSuccess={() => {
+          alert('Verified user created successfully!')
+          loadData()
+        }}
+      />
     </div>
   )
 }

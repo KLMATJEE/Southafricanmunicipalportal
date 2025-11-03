@@ -28,6 +28,7 @@ export const api = {
   signup: (data: any) => apiRequest('/signup', { method: 'POST', body: JSON.stringify(data) }),
   getUserProfile: () => apiRequest('/user-profile'),
   createAdmin: (data: any) => apiRequest('/create-admin', { method: 'POST', body: JSON.stringify(data) }),
+  createVerifiedUser: (data: any) => apiRequest('/create-verified-user', { method: 'POST', body: JSON.stringify(data) }),
   
   // Bills
   getBills: () => apiRequest('/bills'),

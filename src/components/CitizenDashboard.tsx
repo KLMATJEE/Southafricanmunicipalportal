@@ -8,6 +8,7 @@ import { FileText, CreditCard, AlertCircle, Bell, Download, DollarSign } from 'l
 import { BillingPortal } from './BillingPortal'
 import { IssueReporting } from './IssueReporting'
 import { NotificationCenter } from './NotificationCenter'
+import { CarbonIntensityWidget } from './CarbonIntensityWidget'
 
 interface CitizenDashboardProps {
   user: any
@@ -113,6 +114,9 @@ export function CitizenDashboard({ user }: CitizenDashboardProps) {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Environmental Impact Widget */}
+      <CarbonIntensityWidget />
       
       {/* Main Content Tabs */}
       <Tabs defaultValue="bills" className="space-y-4">

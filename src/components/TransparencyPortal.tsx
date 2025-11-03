@@ -4,6 +4,7 @@ import { Badge } from './ui/badge'
 import { api } from '../utils/api'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { TrendingUp, DollarSign, AlertCircle, Activity } from 'lucide-react'
+import { CarbonIntensityWidget } from './CarbonIntensityWidget'
 
 export function TransparencyPortal() {
   const [stats, setStats] = useState<any>(null)
@@ -115,6 +116,9 @@ export function TransparencyPortal() {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Environmental Impact */}
+      <CarbonIntensityWidget />
       
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

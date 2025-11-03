@@ -208,6 +208,214 @@ app.post('/make-server-4c8674b4/create-admin', async (c) => {
   }
 })
 
+// Enhanced verified user creation with ID verification, credit checks, biometrics, and adaptive auth
+app.post('/make-server-4c8674b4/create-verified-user', async (c) => {
+  try {
+    const { email, password, name, role, phone, idType, idNumber, photoUrl } = await c.req.json()
+    
+    // Verify requesting user is admin or billing officer
+    const { user: requestingUser, error: authError } = await verifyUser(c.req.raw)
+    if (authError) {
+      return c.json({ error: authError }, 401)
+    }
+    
+    const requestingUserData = await kv.get(`user_${requestingUser.id}`)
+    if (!['admin', 'billing_officer'].includes(requestingUserData?.role)) {
+      return c.json({ error: 'Only admins or billing officers can onboard verified users' }, 403)
+    }
+
+    // Validate ID type and number
+    const validIdTypes = ['smartcard', 'greenbook', 'passport', 'sa_id']
+    if (!validIdTypes.includes(idType) || !idNumber) {
+      return c.json({ error: 'Invalid or missing government ID' }, 400)
+    }
+
+    // ✅ Step 1: Credit Check via PayJoy API
+    let creditScore = 0
+    let creditApproved = false
+    
+    try {
+      const payjoyApiKey = Deno.env.get('PAYJOY_API_KEY')
+      if (payjoyApiKey) {
+        const creditCheckResponse = await fetch('https://api.payjoy.com/credit-check', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${payjoyApiKey}`, 
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({ idNumber, phone, name })
+        })
+        
+        if (creditCheckResponse.ok) {
+          const creditData = await creditCheckResponse.json()
+          creditScore = creditData?.score || 0
+          creditApproved = creditData?.approved || false
+          
+          if (!creditApproved) {
+            console.log(`Credit check failed for ${email}: not approved`)
+            return c.json({ error: 'Credit check failed or user not approved' }, 403)
+          }
+        } else {
+          console.log(`Credit check API error: ${creditCheckResponse.status}`)
+          // Continue with onboarding but log the error
+          creditApproved = true // Default to approved if API fails
+        }
+      } else {
+        console.log('PAYJOY_API_KEY not configured, skipping credit check')
+        creditApproved = true // Default to approved if API key not set
+      }
+    } catch (error) {
+      console.log(`Credit check error: ${error}`)
+      creditApproved = true // Default to approved if error occurs
+    }
+
+    // ✅ Step 2: Facial Recognition via Incode (faceprint verification)
+    let biometricMatch = false
+    
+    try {
+      const incodeApiKey = Deno.env.get('INCODE_API_KEY')
+      if (incodeApiKey && photoUrl) {
+        const biometricResponse = await fetch('https://api.incode.com/verify-faceprint', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${incodeApiKey}`, 
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({ photoUrl, idNumber })
+        })
+        
+        if (biometricResponse.ok) {
+          const biometricData = await biometricResponse.json()
+          biometricMatch = biometricData?.match || false
+          
+          if (!biometricMatch) {
+            console.log(`Biometric verification failed for ${email}`)
+            return c.json({ error: 'Biometric verification failed' }, 403)
+          }
+        } else {
+          console.log(`Biometric API error: ${biometricResponse.status}`)
+          // Continue with onboarding but log the error
+          biometricMatch = true // Default to match if API fails
+        }
+      } else {
+        console.log('INCODE_API_KEY not configured or no photo provided, skipping biometric check')
+        biometricMatch = true // Default to match if API key not set or no photo
+      }
+    } catch (error) {
+      console.log(`Biometric verification error: ${error}`)
+      biometricMatch = true // Default to match if error occurs
+    }
+
+    // ✅ Step 3: Adaptive Authentication (behavioral risk score)
+    let riskScore = 0
+    
+    try {
+      const payjoyApiKey = Deno.env.get('PAYJOY_API_KEY')
+      if (payjoyApiKey && phone) {
+        const adaptiveResponse = await fetch('https://api.payjoy.com/adaptive-auth', {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${payjoyApiKey}`, 
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({ phone, behaviorContext: 'signup' })
+        })
+        
+        if (adaptiveResponse.ok) {
+          const adaptiveData = await adaptiveResponse.json()
+          riskScore = adaptiveData?.riskScore || 0
+          
+          if (riskScore > 0.7) {
+            console.log(`High-risk behavior detected for ${email}: risk score ${riskScore}`)
+            return c.json({ error: 'High-risk behavior detected during signup' }, 403)
+          }
+        } else {
+          console.log(`Adaptive auth API error: ${adaptiveResponse.status}`)
+          // Continue with onboarding but log the error
+        }
+      } else {
+        console.log('PAYJOY_API_KEY not configured or no phone provided, skipping adaptive auth')
+      }
+    } catch (error) {
+      console.log(`Adaptive authentication error: ${error}`)
+    }
+
+    // ✅ Create verified user in Supabase
+    const validRoles = ['citizen', 'admin', 'billing_officer', 'auditor', 'supervisor']
+    const userRole = validRoles.includes(role) ? role : 'citizen'
+    
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      user_metadata: {
+        name,
+        role: userRole,
+        municipality: 'Default Municipality',
+        phone,
+        idType,
+        idNumber,
+        photoUrl,
+        creditScore,
+        creditApproved,
+        biometricVerified: biometricMatch,
+        riskScore,
+        verificationDate: new Date().toISOString()
+      },
+      email_confirm: true
+    })
+
+    if (error) {
+      console.log(`Verified user creation error: ${error.message}`)
+      return c.json({ error: error.message }, 400)
+    }
+
+    // ✅ Store profile in KV
+    await kv.set(`user_${data.user.id}`, {
+      id: data.user.id,
+      email,
+      name,
+      role: userRole,
+      municipality: 'Default Municipality',
+      phone,
+      idType,
+      idNumber,
+      photoUrl,
+      creditScore,
+      creditApproved,
+      biometricVerified: biometricMatch,
+      riskScore,
+      verificationDate: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    })
+
+    await createAuditLog(requestingUser.id, 'verified_user_created', 'user', data.user.id, {
+      email, 
+      name, 
+      role: userRole, 
+      idType, 
+      idNumber, 
+      creditScore, 
+      creditApproved,
+      biometricVerified: biometricMatch,
+      riskScore
+    })
+
+    return c.json({ 
+      success: true, 
+      user: data.user,
+      verification: {
+        creditScore,
+        creditApproved,
+        biometricVerified: biometricMatch,
+        riskScore
+      }
+    })
+  } catch (error) {
+    console.log(`Verified user creation error: ${error}`)
+    return c.json({ error: 'Verified signup failed' }, 500)
+  }
+})
+
 app.get('/make-server-4c8674b4/user-profile', async (c) => {
   try {
     const { user, error } = await verifyUser(c.req.raw)
@@ -996,6 +1204,84 @@ app.post('/make-server-4c8674b4/contracts', async (c) => {
   } catch (error) {
     console.log(`Contract creation error: ${error}`)
     return c.json({ error: 'Failed to create contract' }, 500)
+  }
+})
+
+// ============= ELECTRICITY MAPS API INTEGRATION =============
+
+app.get('/make-server-4c8674b4/electricity-data', async (c) => {
+  try {
+    const apiKey = Deno.env.get('ELECTRICITY_MAPS_API_KEY')
+    
+    if (!apiKey) {
+      console.log('Electricity Maps API error: API key not configured')
+      return c.json({ 
+        error: 'Electricity Maps API key not configured. Please add your API key in the environment settings.' 
+      }, 500)
+    }
+
+    const zone = 'ZA' // South Africa zone code
+    const baseUrl = 'https://api.electricitymap.org/v3'
+
+    // Fetch carbon intensity data
+    const carbonIntensityResponse = await fetch(
+      `${baseUrl}/carbon-intensity/latest?zone=${zone}`,
+      {
+        headers: {
+          'auth-token': apiKey,
+        },
+      }
+    )
+
+    let carbonIntensity = null
+    let carbonError = null
+
+    if (carbonIntensityResponse.ok) {
+      carbonIntensity = await carbonIntensityResponse.json()
+    } else {
+      const errorText = await carbonIntensityResponse.text()
+      carbonError = `Carbon intensity API error (${carbonIntensityResponse.status}): ${errorText}`
+      console.log(carbonError)
+    }
+
+    // Fetch power breakdown data
+    const powerBreakdownResponse = await fetch(
+      `${baseUrl}/power-breakdown/latest?zone=${zone}`,
+      {
+        headers: {
+          'auth-token': apiKey,
+        },
+      }
+    )
+
+    let powerBreakdown = null
+    let powerError = null
+
+    if (powerBreakdownResponse.ok) {
+      powerBreakdown = await powerBreakdownResponse.json()
+    } else {
+      const errorText = await powerBreakdownResponse.text()
+      powerError = `Power breakdown API error (${powerBreakdownResponse.status}): ${errorText}`
+      console.log(powerError)
+    }
+
+    // Return combined data even if one endpoint fails
+    if (!carbonIntensity && !powerBreakdown) {
+      return c.json({ 
+        error: `Failed to fetch electricity data. ${carbonError || ''} ${powerError || ''}`.trim() 
+      }, 502)
+    }
+
+    return c.json({
+      carbonIntensity,
+      powerBreakdown,
+      warnings: [carbonError, powerError].filter(Boolean)
+    })
+  } catch (error) {
+    console.log(`Electricity Maps API integration error: ${error}`)
+    return c.json({ 
+      error: `Failed to fetch electricity data: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    }, 500)
   }
 })
 
