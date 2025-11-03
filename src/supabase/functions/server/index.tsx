@@ -1285,4 +1285,441 @@ app.get('/make-server-4c8674b4/electricity-data', async (c) => {
   }
 })
 
+// ============= WORKFLOW AUTOMATION ROUTES =============
+
+app.get('/make-server-4c8674b4/workflows', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const workflows = await kv.getByPrefix('workflow_')
+    const userWorkflows = (workflows || []).filter((w: any) => 
+      w.initiatedBy === user.id || 
+      w.steps.some((s: any) => s.assignedRole === user.user_metadata?.role)
+    )
+
+    return c.json({ workflows: userWorkflows })
+  } catch (error) {
+    console.log(`Workflows fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch workflows' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/workflows', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const workflowData = await c.req.json()
+    const workflowId = `workflow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    const workflow = {
+      id: workflowId,
+      ...workflowData,
+      initiatedBy: user.id,
+      initiatedAt: new Date().toISOString(),
+      currentStep: 0,
+      status: 'submitted',
+      steps: workflowData.steps.map((step: any, index: number) => ({
+        ...step,
+        status: index === 0 ? 'in_progress' : 'pending'
+      })),
+      comments: [],
+      documents: workflowData.documents || []
+    }
+
+    await kv.set(workflowId, workflow)
+    await createAuditLog(user.id, 'workflow_created', 'workflow', workflowId, workflow)
+
+    // Create notification for assigned role
+    const firstStep = workflow.steps[0]
+    await createNotification(firstStep.assignedRole, {
+      type: 'workflow',
+      title: `New workflow assigned: ${workflow.title}`,
+      message: `You have a new ${workflow.type} workflow requiring your review`,
+      priority: 'high',
+      metadata: { workflowId }
+    })
+
+    return c.json({ success: true, workflow })
+  } catch (error) {
+    console.log(`Workflow creation error: ${error}`)
+    return c.json({ error: 'Failed to create workflow' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/workflows/:id/action', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const workflowId = c.req.param('id')
+    const { action, stepId, comment } = await c.req.json()
+
+    const workflow = await kv.get(workflowId)
+    if (!workflow) {
+      return c.json({ error: 'Workflow not found' }, 404)
+    }
+
+    const currentStep = workflow.steps[workflow.currentStep]
+    if (currentStep.assignedRole !== user.user_metadata?.role) {
+      return c.json({ error: 'Unauthorized to perform this action' }, 403)
+    }
+
+    // Add comment
+    workflow.comments.push({
+      id: `comment_${Date.now()}`,
+      userId: user.id,
+      userName: user.email,
+      text: comment,
+      timestamp: new Date().toISOString(),
+      stepId
+    })
+
+    if (action === 'approve') {
+      currentStep.status = 'completed'
+      currentStep.completedAt = new Date().toISOString()
+      currentStep.completedBy = user.email
+      currentStep.comments = comment
+
+      // Move to next step or complete workflow
+      if (workflow.currentStep < workflow.steps.length - 1) {
+        workflow.currentStep += 1
+        workflow.steps[workflow.currentStep].status = 'in_progress'
+        workflow.status = 'in_review'
+
+        // Notify next assignee
+        const nextStep = workflow.steps[workflow.currentStep]
+        await createNotification(nextStep.assignedRole, {
+          type: 'workflow',
+          title: `Workflow step assigned: ${workflow.title}`,
+          message: `Step "${nextStep.name}" requires your review`,
+          priority: 'high',
+          metadata: { workflowId }
+        })
+      } else {
+        workflow.status = 'approved'
+        
+        // Notify initiator
+        await createNotification(workflow.initiatedBy, {
+          type: 'workflow',
+          title: `Workflow approved: ${workflow.title}`,
+          message: 'Your workflow has been fully approved',
+          priority: 'medium',
+          metadata: { workflowId }
+        })
+      }
+    } else if (action === 'reject') {
+      currentStep.status = 'rejected'
+      currentStep.completedAt = new Date().toISOString()
+      currentStep.completedBy = user.email
+      currentStep.comments = comment
+      workflow.status = 'rejected'
+
+      // Notify initiator
+      await createNotification(workflow.initiatedBy, {
+        type: 'workflow',
+        title: `Workflow rejected: ${workflow.title}`,
+        message: `Step "${currentStep.name}" was rejected. Reason: ${comment}`,
+        priority: 'high',
+        metadata: { workflowId }
+      })
+    } else if (action === 'request_changes') {
+      currentStep.comments = comment
+      workflow.status = 'in_review'
+
+      // Notify initiator
+      await createNotification(workflow.initiatedBy, {
+        type: 'workflow',
+        title: `Changes requested: ${workflow.title}`,
+        message: `Changes needed for step "${currentStep.name}"`,
+        priority: 'medium',
+        metadata: { workflowId }
+      })
+    }
+
+    await kv.set(workflowId, workflow)
+    await createAuditLog(user.id, `workflow_${action}`, 'workflow', workflowId, { action, comment })
+
+    return c.json({ success: true, workflow })
+  } catch (error) {
+    console.log(`Workflow action error: ${error}`)
+    return c.json({ error: 'Failed to perform workflow action' }, 500)
+  }
+})
+
+// ============= NOTIFICATION ROUTES =============
+
+async function createNotification(recipient: string, notification: any) {
+  const notificationId = `notification_${recipient}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  
+  await kv.set(notificationId, {
+    id: notificationId,
+    userId: recipient,
+    ...notification,
+    read: false,
+    timestamp: new Date().toISOString()
+  })
+
+  // TODO: Implement email sending via SendGrid/AWS SES
+  // TODO: Implement push notification via FCM/APNS
+  
+  console.log(`Notification created for ${recipient}: ${notification.title}`)
+}
+
+app.get('/make-server-4c8674b4/notification-preferences', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const preferences = await kv.get(`notification_prefs_${user.id}`)
+    
+    return c.json({ preferences: preferences || getDefaultPreferences() })
+  } catch (error) {
+    console.log(`Notification preferences fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch preferences' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/notification-preferences', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const { preferences } = await c.req.json()
+    await kv.set(`notification_prefs_${user.id}`, preferences)
+    
+    await createAuditLog(user.id, 'notification_preferences_updated', 'settings', user.id, preferences)
+
+    return c.json({ success: true })
+  } catch (error) {
+    console.log(`Notification preferences update error: ${error}`)
+    return c.json({ error: 'Failed to update preferences' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/push-subscription', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const { subscription } = await c.req.json()
+    await kv.set(`push_subscription_${user.id}`, subscription)
+
+    console.log(`Push subscription registered for user ${user.id}`)
+
+    return c.json({ success: true })
+  } catch (error) {
+    console.log(`Push subscription error: ${error}`)
+    return c.json({ error: 'Failed to register push subscription' }, 500)
+  }
+})
+
+app.get('/make-server-4c8674b4/notifications', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    // Get all notifications for the user
+    const allNotifications = await kv.getByPrefix('notification_')
+    const userNotifications = (allNotifications || []).filter((n: any) => n.userId === user.id)
+    
+    // Sort by timestamp, most recent first
+    userNotifications.sort((a: any, b: any) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    )
+
+    return c.json({ notifications: userNotifications })
+  } catch (error) {
+    console.log(`Notifications fetch error: ${error}`)
+    return c.json({ error: 'Failed to fetch notifications' }, 500)
+  }
+})
+
+app.post('/make-server-4c8674b4/notifications/:id/read', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const notificationId = c.req.param('id')
+    const notification = await kv.get(notificationId)
+
+    if (!notification) {
+      return c.json({ error: 'Notification not found' }, 404)
+    }
+
+    if (notification.userId !== user.id) {
+      return c.json({ error: 'Unauthorized' }, 403)
+    }
+
+    notification.read = true
+    await kv.set(notificationId, notification)
+
+    return c.json({ success: true })
+  } catch (error) {
+    console.log(`Mark notification read error: ${error}`)
+    return c.json({ error: 'Failed to mark notification as read' }, 500)
+  }
+})
+
+// ============= REPORT GENERATION ROUTES =============
+
+app.post('/make-server-4c8674b4/reports/generate', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const { config } = await c.req.json()
+    const reportId = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    // Fetch data based on report type
+    let reportData: any = {}
+
+    if (config.type === 'audit') {
+      const auditLogs = await kv.getByPrefix('audit_')
+      reportData = {
+        logs: auditLogs.filter((log: any) => {
+          const logDate = new Date(log.timestamp)
+          return logDate >= new Date(config.dateRange.from) && 
+                 logDate <= new Date(config.dateRange.to)
+        })
+      }
+    } else if (config.type === 'compliance') {
+      const workflows = await kv.getByPrefix('workflow_')
+      const issues = await kv.getByPrefix('issue_')
+      reportData = { workflows, issues }
+    } else if (config.type === 'financial') {
+      const payments = await kv.getByPrefix('payment_')
+      const bills = await kv.getByPrefix('bill_')
+      reportData = { payments, bills }
+    }
+
+    // Store report metadata
+    const report = {
+      id: reportId,
+      userId: user.id,
+      type: config.type,
+      format: config.format,
+      config,
+      generatedAt: new Date().toISOString(),
+      status: 'completed',
+      dataSnapshot: reportData
+    }
+
+    await kv.set(reportId, report)
+    await createAuditLog(user.id, 'report_generated', 'report', reportId, { type: config.type, format: config.format })
+
+    // In production, generate actual file and return signed URL
+    const downloadUrl = `/api/reports/${reportId}/download`
+
+    return c.json({ success: true, reportId, downloadUrl })
+  } catch (error) {
+    console.log(`Report generation error: ${error}`)
+    return c.json({ error: 'Failed to generate report' }, 500)
+  }
+})
+
+app.get('/make-server-4c8674b4/reports/:id/download', async (c) => {
+  try {
+    const { user, error } = await verifyUser(c.req.raw)
+    if (error) {
+      return c.json({ error }, 401)
+    }
+
+    const reportId = c.req.param('id')
+    const report = await kv.get(reportId)
+
+    if (!report) {
+      return c.json({ error: 'Report not found' }, 404)
+    }
+
+    if (report.userId !== user.id && user.user_metadata?.role !== 'admin') {
+      return c.json({ error: 'Unauthorized' }, 403)
+    }
+
+    // Generate file based on format
+    let fileContent: string
+    let contentType: string
+
+    if (report.format === 'json') {
+      fileContent = JSON.stringify(report.dataSnapshot, null, 2)
+      contentType = 'application/json'
+    } else if (report.format === 'csv') {
+      // Convert to CSV
+      fileContent = convertToCSV(report.dataSnapshot)
+      contentType = 'text/csv'
+    } else {
+      // For PDF/Excel, return placeholder
+      return c.json({ message: 'PDF/Excel generation requires additional library integration' })
+    }
+
+    return new Response(fileContent, {
+      headers: {
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${report.id}.${report.format}"`
+      }
+    })
+  } catch (error) {
+    console.log(`Report download error: ${error}`)
+    return c.json({ error: 'Failed to download report' }, 500)
+  }
+})
+
+function convertToCSV(data: any): string {
+  // Simple CSV conversion
+  if (Array.isArray(data)) {
+    if (data.length === 0) return ''
+    
+    const headers = Object.keys(data[0]).join(',')
+    const rows = data.map(item => 
+      Object.values(item).map(v => JSON.stringify(v)).join(',')
+    )
+    
+    return [headers, ...rows].join('\n')
+  }
+  
+  return JSON.stringify(data)
+}
+
+function getDefaultPreferences() {
+  return {
+    email: {
+      enabled: true,
+      address: '',
+      frequency: 'immediate'
+    },
+    push: {
+      enabled: false,
+      permission: 'default'
+    },
+    channels: {
+      bills: true,
+      payments: true,
+      serviceRequests: true,
+      workflows: true,
+      deadlines: true,
+      compliance: true,
+      system: true
+    }
+  }
+}
+
 Deno.serve(app.fetch)

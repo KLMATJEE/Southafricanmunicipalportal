@@ -6,6 +6,7 @@ import { TransparencyPortal } from './components/TransparencyPortal'
 import { UnifiedServicePortal } from './components/UnifiedServicePortal'
 import { EParticipationTools } from './components/EParticipationTools'
 import { ProcurementTransparency } from './components/ProcurementTransparency'
+import { EnterpriseDashboard } from './components/EnterpriseDashboard'
 import { GovernmentHeader } from './components/GovernmentHeader'
 import { LanguageSelector } from './components/LanguageSelector'
 import { OfflineSyncIndicator } from './components/OfflineSyncIndicator'
@@ -15,12 +16,12 @@ import { api } from './utils/api'
 import { createClient } from './utils/supabase/client'
 import { Language, getTranslation } from './utils/translations'
 import { CacheManager } from './utils/offlineSync'
-import { Building2, LogOut, BarChart3, Home, Settings, Grid3X3, Users, Package, HelpCircle } from 'lucide-react'
+import { Building2, LogOut, BarChart3, Home, Settings, Grid3X3, Users, Package, HelpCircle, Briefcase } from 'lucide-react'
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState<any>(null)
-  const [currentView, setCurrentView] = useState<'unified' | 'dashboard' | 'admin' | 'transparency' | 'participation' | 'procurement'>('unified')
+  const [currentView, setCurrentView] = useState<'unified' | 'dashboard' | 'admin' | 'transparency' | 'participation' | 'procurement' | 'enterprise'>('unified')
   const [isLoading, setIsLoading] = useState(true)
   const [language, setLanguage] = useState<Language>('en')
   const [bills, setBills] = useState<any[]>([])
@@ -221,17 +222,31 @@ export default function App() {
             </button>
             
             {isAdmin && (
-              <button
-                onClick={() => setCurrentView('admin')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  currentView === 'admin'
-                    ? 'border-sa-green text-sa-green'
-                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
-                }`}
-              >
-                <Settings className="w-4 h-4 inline mr-2" />
-                {t('admin')}
-              </button>
+              <>
+                <button
+                  onClick={() => setCurrentView('admin')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    currentView === 'admin'
+                      ? 'border-sa-green text-sa-green'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                  }`}
+                >
+                  <Settings className="w-4 h-4 inline mr-2" />
+                  {t('admin')}
+                </button>
+                
+                <button
+                  onClick={() => setCurrentView('enterprise')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    currentView === 'enterprise'
+                      ? 'border-sa-green text-sa-green'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                  }`}
+                >
+                  <Briefcase className="w-4 h-4 inline mr-2" />
+                  Enterprise
+                </button>
+              </>
             )}
             
             <button
@@ -276,6 +291,10 @@ export default function App() {
         
         {currentView === 'admin' && isAdmin && (
           <AdminPanel user={user} />
+        )}
+        
+        {currentView === 'enterprise' && isAdmin && (
+          <EnterpriseDashboard user={user} />
         )}
         
         {currentView === 'transparency' && (

@@ -72,4 +72,22 @@ export const api = {
   registerSupplier: (data: any) => apiRequest('/suppliers', { method: 'POST', body: JSON.stringify(data) }),
   getContracts: () => apiRequest('/contracts'),
   createContract: (data: any) => apiRequest('/contracts', { method: 'POST', body: JSON.stringify(data) }),
+  
+  // Workflows
+  getWorkflows: () => apiRequest('/workflows'),
+  createWorkflow: (data: any) => apiRequest('/workflows', { method: 'POST', body: JSON.stringify(data) }),
+  performWorkflowAction: (id: string, data: any) => apiRequest(`/workflows/${id}/action`, { method: 'POST', body: JSON.stringify(data) }),
+  
+  // Reports
+  generateReport: (config: any) => apiRequest('/reports/generate', { method: 'POST', body: JSON.stringify({ config }) }),
+  downloadReport: (id: string) => apiRequest(`/reports/${id}/download`),
+  
+  // Notification Preferences
+  getNotificationPreferences: () => apiRequest('/notification-preferences'),
+  updateNotificationPreferences: (preferences: any) => apiRequest('/notification-preferences', { method: 'POST', body: JSON.stringify({ preferences }) }),
+  subscribeToPush: (subscription: any) => apiRequest('/push-subscription', { method: 'POST', body: JSON.stringify({ subscription }) }),
+  
+  // Generic fetch and post for flexibility
+  fetch: (endpoint: string) => apiRequest(endpoint),
+  post: (endpoint: string, data: any) => apiRequest(endpoint, { method: 'POST', body: JSON.stringify(data) }),
 }
