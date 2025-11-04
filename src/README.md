@@ -1,7 +1,6 @@
 # 🏛️ South African Municipal Portal
 
 [![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/your-repo)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-production--ready-success.svg)](https://github.com/your-repo)
 
 > A comprehensive, multilingual municipal service portal for South African citizens with offline capabilities, e-participation tools, and procurement transparency.
