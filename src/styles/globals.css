@@ -47,6 +47,20 @@
   --sa-blue: #001489;
   --sa-black: #000000;
   --sa-white: #FFFFFF;
+  
+  /* Calculator Colors */
+  --calc-success: #00A651;
+  --calc-warning: #FF9500;
+  --calc-info: #0066CC;
+  --calc-neutral-light: #F5F5F5;
+  --calc-neutral-medium: #E8E8E8;
+  
+  /* Chart Colors */
+  --chart-primary: #007749;
+  --chart-secondary: #0066CC;
+  --chart-accent: #FF9500;
+  --chart-positive: #00A651;
+  --chart-negative: #DE3831;
 }
 
 .dark {
@@ -133,6 +147,20 @@
   --color-sa-blue: var(--sa-blue);
   --color-sa-black: var(--sa-black);
   --color-sa-white: var(--sa-white);
+  
+  /* Calculator Colors */
+  --color-calc-success: var(--calc-success);
+  --color-calc-warning: var(--calc-warning);
+  --color-calc-info: var(--calc-info);
+  --color-calc-neutral-light: var(--calc-neutral-light);
+  --color-calc-neutral-medium: var(--calc-neutral-medium);
+  
+  /* Chart Colors */
+  --color-chart-primary: var(--chart-primary);
+  --color-chart-secondary: var(--chart-secondary);
+  --color-chart-accent: var(--chart-accent);
+  --color-chart-positive: var(--chart-positive);
+  --color-chart-negative: var(--chart-negative);
 }
 
 @layer base {
