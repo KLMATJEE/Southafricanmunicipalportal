@@ -7,6 +7,7 @@ import { UnifiedServicePortal } from './components/UnifiedServicePortal'
 import { EParticipationTools } from './components/EParticipationTools'
 import { ProcurementTransparency } from './components/ProcurementTransparency'
 import { EnterpriseDashboard } from './components/EnterpriseDashboard'
+import { CalculatorView } from './components/CalculatorView'
 import { GovernmentHeader } from './components/GovernmentHeader'
 import { LanguageSelector } from './components/LanguageSelector'
 import { OfflineSyncIndicator } from './components/OfflineSyncIndicator'
@@ -16,12 +17,12 @@ import { api } from './utils/api'
 import { createClient } from './utils/supabase/client'
 import { Language, getTranslation } from './utils/translations'
 import { CacheManager } from './utils/offlineSync'
-import { Building2, LogOut, BarChart3, Home, Settings, Grid3X3, Users, Package, HelpCircle, Briefcase } from 'lucide-react'
+import { Building2, LogOut, BarChart3, Home, Settings, Grid3X3, Users, Package, HelpCircle, Briefcase, Calculator } from 'lucide-react'
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState<any>(null)
-  const [currentView, setCurrentView] = useState<'unified' | 'dashboard' | 'admin' | 'transparency' | 'participation' | 'procurement' | 'enterprise'>('unified')
+  const [currentView, setCurrentView] = useState<'unified' | 'dashboard' | 'admin' | 'transparency' | 'participation' | 'procurement' | 'enterprise' | 'calculators'>('unified')
   const [isLoading, setIsLoading] = useState(true)
   const [language, setLanguage] = useState<Language>('en')
   const [bills, setBills] = useState<any[]>([])
@@ -260,6 +261,18 @@ export default function App() {
               <BarChart3 className="w-4 h-4 inline mr-2" />
               {t('transparency')}
             </button>
+            
+            <button
+              onClick={() => setCurrentView('calculators')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                currentView === 'calculators'
+                  ? 'border-sa-green text-sa-green'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+              }`}
+            >
+              <Calculator className="w-4 h-4 inline mr-2" />
+              Calculators
+            </button>
           </nav>
         </div>
       </div>
@@ -299,6 +312,10 @@ export default function App() {
         
         {currentView === 'transparency' && (
           <TransparencyPortal />
+        )}
+        
+        {currentView === 'calculators' && (
+          <CalculatorView />
         )}
       </main>
       
