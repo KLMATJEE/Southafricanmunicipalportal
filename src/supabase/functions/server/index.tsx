@@ -3,6 +3,8 @@ import { cors } from 'npm:hono/cors'
 import { logger } from 'npm:hono/logger'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import * as kv from './kv_store.tsx'
+import { billingRoutes } from './billing-routes.tsx'
+import { seedRoutes } from './seed-billing-data.tsx'
 
 const app = new Hono()
 
@@ -17,6 +19,11 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
+
+// Mount billing routes
+app.route('/make-server-4c8674b4', billingRoutes)
+// Mount seed routes
+app.route('/make-server-4c8674b4', seedRoutes)
 
 // Storage bucket initialization
 const BUCKET_NAME = 'make-4c8674b4-issue-photos'
@@ -428,133 +435,6 @@ app.get('/make-server-4c8674b4/user-profile', async (c) => {
   } catch (error) {
     console.log(`User profile fetch error: ${error}`)
     return c.json({ error: 'Failed to fetch profile' }, 500)
-  }
-})
-
-// ============= BILLING ROUTES =============
-
-app.get('/make-server-4c8674b4/bills', async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw)
-    if (error) {
-      return c.json({ error }, 401)
-    }
-    
-    const bills = await kv.getByPrefix(`bill_${user.id}_`)
-    return c.json({ bills: bills || [] })
-  } catch (error) {
-    console.log(`Bills fetch error: ${error}`)
-    return c.json({ error: 'Failed to fetch bills' }, 500)
-  }
-})
-
-app.post('/make-server-4c8674b4/generate-bill', async (c) => {
-  try {
-    const { user, error: authError } = await verifyUser(c.req.raw)
-    if (authError) {
-      return c.json({ error: authError }, 401)
-    }
-    
-    const userData = await kv.get(`user_${user.id}`)
-    if (!['admin', 'billing_officer'].includes(userData?.role)) {
-      return c.json({ error: 'Unauthorized: Only billing officers can generate bills' }, 403)
-    }
-    
-    const { citizenId, services, dueDate } = await c.req.json()
-    
-    const billId = `bill_${citizenId}_${Date.now()}`
-    const total = services.reduce((sum: number, s: any) => sum + s.amount, 0)
-    
-    const bill = {
-      id: billId,
-      citizenId,
-      services,
-      total,
-      dueDate,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      createdBy: user.id
-    }
-    
-    await kv.set(billId, bill)
-    await createAuditLog(user.id, 'bill_generated', 'bill', billId, bill)
-    
-    return c.json({ success: true, bill })
-  } catch (error) {
-    console.log(`Bill generation error: ${error}`)
-    return c.json({ error: 'Failed to generate bill' }, 500)
-  }
-})
-
-// ============= PAYMENT ROUTES =============
-
-app.post('/make-server-4c8674b4/payments', async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw)
-    if (error) {
-      return c.json({ error }, 401)
-    }
-    
-    const { billId, amount, method, transactionFee, totalWithFee } = await c.req.json()
-    
-    const paymentId = `payment_${user.id}_${Date.now()}`
-    const payment = {
-      id: paymentId,
-      userId: user.id,
-      billId,
-      amount,
-      method,
-      transactionFee: transactionFee || 0,
-      totalWithFee: totalWithFee || amount,
-      status: 'completed',
-      timestamp: new Date().toISOString(),
-      receiptNumber: `RCP-${Date.now()}`
-    }
-    
-    await kv.set(paymentId, payment)
-    
-    // Track transaction fee revenue separately
-    if (transactionFee > 0) {
-      const feeRecordId = `transaction_fee_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      await kv.set(feeRecordId, {
-        id: feeRecordId,
-        paymentId,
-        userId: user.id,
-        amount: transactionFee,
-        method,
-        timestamp: new Date().toISOString()
-      })
-    }
-    
-    // Update bill status
-    const bill = await kv.get(billId)
-    if (bill) {
-      bill.status = 'paid'
-      bill.paidAt = new Date().toISOString()
-      await kv.set(billId, bill)
-    }
-    
-    await createAuditLog(user.id, 'payment_made', 'payment', paymentId, { ...payment, transactionFee, totalWithFee })
-    
-    return c.json({ success: true, payment })
-  } catch (error) {
-    console.log(`Payment processing error: ${error}`)
-    return c.json({ error: 'Payment failed' }, 500)
-  }
-})
-
-app.get('/make-server-4c8674b4/payments', async (c) => {
-  try {
-    const { user, error } = await verifyUser(c.req.raw)
-    if (error) {
-      return c.json({ error }, 401)
-    }
-    
-    const payments = await kv.getByPrefix(`payment_${user.id}_`)
-    return c.json({ payments: payments || [] })
-  } catch (error) {
-    console.log(`Payments fetch error: ${error}`)
-    return c.json({ error: 'Failed to fetch payments' }, 500)
   }
 })
 
@@ -1213,11 +1093,44 @@ app.get('/make-server-4c8674b4/electricity-data', async (c) => {
   try {
     const apiKey = Deno.env.get('ELECTRICITY_MAPS_API_KEY')
     
+    // Mock data for South Africa
+    const mockData = {
+      carbonIntensity: {
+        zone: 'ZA',
+        carbonIntensity: 650,
+        datetime: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        fossilFreePercentage: 8,
+        renewablePercentage: 6,
+      },
+      powerBreakdown: {
+        fossilFreePercentage: 8,
+        renewablePercentage: 6,
+        powerConsumptionBreakdown: {
+          coal: 85,
+          nuclear: 5,
+          wind: 3,
+          solar: 2,
+          hydro: 1,
+          gas: 4,
+        },
+        powerProductionBreakdown: {
+          coal: 85,
+          nuclear: 5,
+          wind: 3,
+          solar: 2,
+          hydro: 1,
+          gas: 4,
+        },
+      },
+    }
+    
     if (!apiKey) {
-      console.log('Electricity Maps API error: API key not configured')
-      return c.json({ 
-        error: 'Electricity Maps API key not configured. Please add your API key in the environment settings.' 
-      }, 500)
+      console.log('Electricity Maps API: Using mock data (API key not configured)')
+      return c.json({
+        ...mockData,
+        warnings: ['Using estimated data - Electricity Maps API key not configured. See /ELECTRICITY_MAPS_SETUP.md'],
+      })
     }
 
     const zone = 'ZA' // South Africa zone code
@@ -1240,8 +1153,9 @@ app.get('/make-server-4c8674b4/electricity-data', async (c) => {
       carbonIntensity = await carbonIntensityResponse.json()
     } else {
       const errorText = await carbonIntensityResponse.text()
-      carbonError = `Carbon intensity API error (${carbonIntensityResponse.status}): ${errorText}`
-      console.log(carbonError)
+      carbonError = `Carbon API unavailable (${carbonIntensityResponse.status})`
+      console.log(`${carbonError}: ${errorText}`)
+      carbonIntensity = mockData.carbonIntensity
     }
 
     // Fetch power breakdown data
@@ -1261,27 +1175,57 @@ app.get('/make-server-4c8674b4/electricity-data', async (c) => {
       powerBreakdown = await powerBreakdownResponse.json()
     } else {
       const errorText = await powerBreakdownResponse.text()
-      powerError = `Power breakdown API error (${powerBreakdownResponse.status}): ${errorText}`
-      console.log(powerError)
+      powerError = `Power breakdown API unavailable (${powerBreakdownResponse.status})`
+      console.log(`${powerError}: ${errorText}`)
+      powerBreakdown = mockData.powerBreakdown
     }
 
-    // Return combined data even if one endpoint fails
-    if (!carbonIntensity && !powerBreakdown) {
-      return c.json({ 
-        error: `Failed to fetch electricity data. ${carbonError || ''} ${powerError || ''}`.trim() 
-      }, 502)
+    // Build warnings
+    const warnings = []
+    if (carbonError || powerError) {
+      warnings.push('Some live data unavailable - showing estimated values.')
+      warnings.push('To get real-time data, verify your Electricity Maps API key.')
     }
 
     return c.json({
       carbonIntensity,
       powerBreakdown,
-      warnings: [carbonError, powerError].filter(Boolean)
+      warnings: warnings.length > 0 ? warnings : undefined,
     })
   } catch (error) {
-    console.log(`Electricity Maps API integration error: ${error}`)
-    return c.json({ 
-      error: `Failed to fetch electricity data: ${error instanceof Error ? error.message : 'Unknown error'}` 
-    }, 500)
+    console.log(`Electricity Maps API error: ${error}`)
+    // Always return mock data on error
+    return c.json({
+      carbonIntensity: {
+        zone: 'ZA',
+        carbonIntensity: 650,
+        datetime: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        fossilFreePercentage: 8,
+        renewablePercentage: 6,
+      },
+      powerBreakdown: {
+        fossilFreePercentage: 8,
+        renewablePercentage: 6,
+        powerConsumptionBreakdown: {
+          coal: 85,
+          nuclear: 5,
+          wind: 3,
+          solar: 2,
+          hydro: 1,
+          gas: 4,
+        },
+        powerProductionBreakdown: {
+          coal: 85,
+          nuclear: 5,
+          wind: 3,
+          solar: 2,
+          hydro: 1,
+          gas: 4,
+        },
+      },
+      warnings: ['Using estimated data - API error. See /ELECTRICITY_MAPS_SETUP.md'],
+    })
   }
 })
 

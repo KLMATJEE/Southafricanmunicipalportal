@@ -31,6 +31,7 @@ interface CombinedData {
   carbonIntensity: CarbonIntensityData | null;
   powerBreakdown: PowerBreakdown | null;
   error?: string;
+  warnings?: string[];
 }
 
 export function CarbonIntensityWidget() {
@@ -58,7 +59,10 @@ export function CarbonIntensityWidget() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch electricity data');
+        // Don't throw error if we have warnings - data might still be present
+        if (errorData.error && !errorData.carbonIntensity && !errorData.powerBreakdown) {
+          throw new Error(errorData.error || 'Failed to fetch electricity data');
+        }
       }
 
       const result = await response.json();
@@ -169,6 +173,16 @@ export function CarbonIntensityWidget() {
         </div>
       </CardHeader>
       <CardContent>
+        {/* Show warnings if present */}
+        {data.warnings && data.warnings.length > 0 && (
+          <Alert className="mb-4 border-blue-200 bg-blue-50">
+            <Info className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-xs text-blue-900">
+              <strong>Note:</strong> {data.warnings[0]}
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="carbon" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="carbon">Carbon Intensity</TabsTrigger>

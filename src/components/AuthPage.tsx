@@ -86,17 +86,22 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
         });
 
       if (signInError) {
-        // Provide a more helpful error message
+        // Check for specific error types
         if (
-          signInError.message.includes(
-            "Invalid login credentials",
-          )
+          signInError.message.includes("Invalid login credentials") ||
+          signInError.message.includes("Invalid email or password")
         ) {
-          throw new Error(
-            "Invalid email or password. If you don't have an account, please sign up first.",
+          setError(
+            "Invalid email or password. Please check your credentials and try again.",
           );
+        } else if (signInError.message.includes("Email not confirmed")) {
+          setError("Please verify your email address before signing in.");
+        } else {
+          setError(signInError.message);
         }
-        throw signInError;
+        console.error("Sign in error:", signInError);
+        setIsLoading(false);
+        return;
       }
 
       localStorage.setItem(
@@ -106,7 +111,7 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
       onAuthSuccess();
     } catch (err: any) {
       console.error("Sign in error:", err);
-      setError(err.message || "Sign in failed");
+      setError(err.message || "Sign in failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
